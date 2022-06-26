@@ -27,7 +27,7 @@ async def main():
 
         output.append(f"{name}: {prices[i]}")
 
-    print(" ".join(output))
+    print(" ".join(output), end="")
 
 if __name__ == "__main__":
     asyncio.run(main())
