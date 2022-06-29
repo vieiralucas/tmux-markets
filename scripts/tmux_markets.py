@@ -48,9 +48,33 @@ def save_index(idx: int):
         f.write(str(idx))
 
 
+def parse_ticker(raw: str) -> Optional[tuple[str, str]]:
+    parts = raw.replace("(", "").replace(")", "").split(",")
+    if len(parts) < 2:
+        return None
+
+    return parts[0].strip(), parts[1].strip()
+
+
+def get_tickers() -> list[tuple[str, str]]:
+    cmd = os.popen("tmux show-option -gqv @tmux_markets")
+    out = cmd.read()
+    result: list[tuple[str, str]] = []
+
+    for ticker in map(parse_ticker, out.split(" ")):
+        if ticker is None:
+            continue
+        result.append(ticker)
+
+    return result
+
+
 async def main():
     current_idx = get_index()
-    tickers = [("BTC-USD", "BTC"), ("^BVSP", "IBOV"), ("BRL=X", "USD")]
+    tickers = get_tickers()
+    if len(tickers) == 0:
+        print("No market is defined")
+        return
 
     with_prices = await asyncio.gather(
         *list(map(lambda ticker: stock_price(ticker[0], ticker[1]), tickers))
@@ -73,6 +97,10 @@ async def main():
             out += f" {arrow}{mkt_change:.2f}"
 
         output.append(out)
+
+    if len(output) == 0:
+        print("Error fetching prices")
+        return
 
     if current_idx >= len(output):
         current_idx = 0
