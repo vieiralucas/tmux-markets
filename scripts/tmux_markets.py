@@ -4,30 +4,84 @@ import requests
 from bs4 import BeautifulSoup
 import asyncio
 from typing import Optional
+import os
 
-async def stock_price(symbol: str) -> Optional[str]:
+
+async def stock_price(symbol: str, name: str) -> Optional[tuple[str, float, float]]:
     url = f"https://finance.yahoo.com/quote/{symbol}/"
-    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36"
+    }
     response = requests.get(url, headers=headers)
     soup = BeautifulSoup(response.text, "html.parser")
-    price_els = soup.select("[data-test=\"qsp-price\"]")
-    if len(price_els) < 1:
+
+    try:
+        price_els = soup.select('[data-field="regularMarketPrice"]')
+        price = float(price_els.pop().text.replace(",", ""))
+    except Exception:
         return None
 
-    return price_els.pop().text
+    try:
+        mkt_change_els = soup.select('[data-field="regularMarketChange"]')
+        mkt_change = float(mkt_change_els.pop().attrs.get("value", "invalid float"))
+    except Exception:
+        return None
+
+    return (name, price, mkt_change)
+
+
+def get_index_filepath():
+    return os.path.join(os.path.expanduser("~"), ".tmux-markets")
+
+
+def get_index():
+    try:
+        with open(get_index_filepath(), "r") as f:
+            text = f.read()
+            return int(text.strip())
+    except Exception:
+        return 0
+
+
+def save_index(idx: int):
+    with open(get_index_filepath(), "w+") as f:
+        f.write(str(idx))
+
 
 async def main():
-    tickers =  [('BTC-USD', 'BTC'), ('^BVSP', 'IBOV'), ('BRL=X', 'USD')]
-    prices = await asyncio.gather(*list(map(lambda ticker: stock_price(ticker[0]), tickers)))
+    current_idx = get_index()
+    tickers = [("BTC-USD", "BTC"), ("^BVSP", "IBOV"), ("BRL=X", "USD")]
+
+    with_prices = await asyncio.gather(
+        *list(map(lambda ticker: stock_price(ticker[0], ticker[1]), tickers))
+    )
     output = []
 
-    for i, (_, name) in enumerate(tickers):
-        if prices[i] is None:
+    for with_price in with_prices:
+        if with_price is None:
             continue
 
-        output.append(f"{name}: {prices[i]}")
+        name, price, mkt_change = with_price
 
-    print(" ".join(output), end="")
+        arrow = "↑"
+        if mkt_change < 0:
+            arrow = "↓"
+
+        out = f"{name}: {price}"
+        if mkt_change != 0:
+            mkt_change = abs(mkt_change)
+            out += f" {arrow}{mkt_change:.2f}"
+
+        output.append(out)
+
+    if current_idx >= len(output):
+        current_idx = 0
+
+    print(output[current_idx], end="")
+
+    current_idx += 1
+    save_index(current_idx)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
