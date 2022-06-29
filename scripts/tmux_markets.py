@@ -17,7 +17,7 @@ async def stock_price(symbol: str, name: str) -> Optional[tuple[str, float, floa
 
     try:
         price_els = soup.select('[data-field="regularMarketPrice"]')
-        price = float(price_els.pop().text.replace(",", ""))
+        price = float(price_els.pop().attrs.get("value", "invalid float"))
     except Exception:
         return None
 
